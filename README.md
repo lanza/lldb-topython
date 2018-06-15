@@ -8,7 +8,8 @@ Help on method JumpToLine in lldb.SBThread:
 
 lldb.SBThread.JumpToLine = JumpToLine(self, *args) unbound lldb.SBThread method
     JumpToLine(self, SBFileSpec file_spec, uint32_t line) -> SBError
-
+```
+```
 (lldb) topython po
 Help on method EvaluateExpression in lldb.SBFrame:
 
