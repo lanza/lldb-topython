@@ -1,5 +1,7 @@
 import lldb
 import re
+import argparse
+import shlex
 
 # `topython` translates LLDB commands to Python API. The translation happens
 # using the following dictionaries.
@@ -108,6 +110,37 @@ RegexCommands = {
     "_regexp-jump": "thread jump",
 }
 
+def _breakpoint_modify_parser():
+    parser = argparse.ArgumentParser(prog="breakpoint modify")
+    parser.add_argument('--auto-continue', '-C')
+    parser.add_argument('--condition', '-c')
+    parser.add_argument('--disable', '-d', action='store_const', const=True, default=None)
+    parser.add_argument('--enable', '-e', action='store_const', const=True, default=None)
+    parser.add_argument('--ignore-count', '-i')
+    parser.add_argument('--one-shot', '-o')
+    parser.add_argument('--queue-name', '-q')
+    parser.add_argument('--thread-index', '-x')
+    parser.add_argument('--thread-name', '-T')
+    return parser
+
+CommandParsers = {
+    "breakpoint modify": _breakpoint_modify_parser(),
+}
+
+CommandFlagAPIs = {
+    "breakpoint modify": {
+        "auto_continue": "lldb.SBBreakpoint.SetAutoContinue",
+        "condition": "lldb.SBBreakpoint.SetCondition",
+        "disable": "lldb.SBBreakpoint.SetEnabled(False)",
+        "enable": "lldb.SBBreakpoint.SetEnabled(True)",
+        "ignore_count": "lldb.SBBreakpoint.SetIgnoreCount",
+        "one_shot": "lldb.SBBreakpoint.SetOneShot",
+        "queue_name": "lldb.SBBreakpoint.SetQueueName",
+        "thread_index": "lldb.SBBreakpoint.SetThreadIndex",
+        "thread_name": "lldb.SBBreakpoint.SetThreadName",
+    }
+}
+
 # [one, two, three] -> "(one|two|three)\b"
 KnownCommands = re.compile(r"({})\b".format(
     "|".join(CommandAPIs.keys() + RegexCommands.keys())))
@@ -140,6 +173,24 @@ def topython(debugger, command, context, result, _internal):
     if known_command in RegexCommands:
         known_command = RegexCommands[known_command]
 
+    parser = CommandParsers.get(known_command)
+    if parser:
+        command_args = expanded_command[len(known_command):]
+        parsed_args, _ = parser.parse_known_args(shlex.split(command_args))
+
+        # Exrtract just the flag names given in the command.
+        command_flags = [
+            name
+            for name, value in vars(parsed_args).iteritems()
+            if value is not None
+        ]
+
+        if command_flags:
+            flagAPIs = CommandFlagAPIs[known_command]
+            for flag in command_flags:
+                _print_help(flagAPIs[flag])
+            return
+
     APIs = CommandAPIs.get(known_command)
     if APIs is None:
         result.SetError("Incomplete support, missing API info for `{}`".format(command))
@@ -153,11 +204,12 @@ def topython(debugger, command, context, result, _internal):
         return
 
     for API in APIs:
-        match = re.match(r"[^(]+", API)
-        assert match
-        help(match.group(0))
-        # Also print full API when it contains parameter info.
-        if "(" in API:
-            print API
+        _print_help(API)
 
-
+def _print_help(API):
+    match = re.match(r"[^(]+", API)
+    assert match
+    help(match.group(0))
+    # Also print full API when it contains parameter info.
+    if "(" in API:
+        print API
